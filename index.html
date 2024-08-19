@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+  {% load static %}
+  <title>WebRTC Audio Capture</title>
+  <link rel="icon" href="{% static 'transcriber/favicon.ico' %}">
+</head>
+<body>
+  <h1>WebRTC Audio Capture</h1>
+  <button id="start">Start Capture</button>
+  <button id="stop">Stop Capture</button>
+
+  <h2>Transcription:</h2>
+  <p id="transcription-result"></p>
+
+  <script>
+    let mediaRecorder;
+    let audioChunks = [];
+
+    document.getElementById('start').onclick = async function() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        mediaRecorder.start();
+
+        mediaRecorder.ondataavailable = function(event) {
+          audioChunks.push(event.data);
+        };
+
+        console.log("Recording started...");
+      } catch (err) {
+        console.error("Error accessing the microphone:", err);
+      }
+    };
+
+    document.getElementById('stop').onclick = function() {
+      mediaRecorder.stop();
+      mediaRecorder.onstop = async function() {
+        const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+
+        console.log("Captured audioBlob:", audioBlob);
+        console.log("AudioBlob size:", audioBlob.size);
+
+        const formData = new FormData();
+        formData.append('file', audioBlob, 'audio.wav');
+
+        try {
+          const response = await fetch('/transcriber/transcribe/', {
+            method: 'POST',
+            body: formData
+          });
+
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+
+          const data = await response.json();
+          console.log('Transcription:', data.transcript);
+
+          // Update the UI with the transcription result
+          document.getElementById('transcription-result').textContent = data.transcript;
+
+        } catch (error) {
+          console.error('Error during transcription:', error);
+          document.getElementById('transcription-result').textContent = 'An error occurred during transcription.';
+        }
+
+        const audioUrl = URL.createObjectURL(audioBlob);
+        const audio = new Audio(audioUrl);
+        audio.play();
+      };
+    };
+  </script>
+</body>
+</html>
